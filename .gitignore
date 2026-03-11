@@ -1,0 +1,17 @@
+# Python environment
+.venv/
+__pycache__/
+
+# Datasets
+dataset/
+CUHK Face Dataset/
+
+# Model Checkpoints
+checkpoints/
+
+# Generated Outputs
+samples/
+deepsketch_outputs.zip
+
+# Jupyter/Kaggle
+.ipynb_checkpoints/
