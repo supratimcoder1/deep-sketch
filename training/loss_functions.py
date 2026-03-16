@@ -8,7 +8,7 @@ def generator_loss(
     fake_pred: torch.Tensor,
     fake_img: torch.Tensor,
     real_img: torch.Tensor,
-    lambda_l1: float = 100.0,
+    lambda_l1: float = 75.0,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Compute generator loss.
 
