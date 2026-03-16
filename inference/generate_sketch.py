@@ -138,10 +138,6 @@ def main() -> None:
     input_tensor = preprocess_image(args.input)
     sketch = generate_sketch(generator, input_tensor, device)
 
-    # post-processing to enhance pencil strokes
-    sketch = cv2.GaussianBlur(sketch, (3,3), 0)
-    sketch = cv2.addWeighted(sketch, 1.5, cv2.GaussianBlur(sketch, (0,0), 2), -0.5, 0)
-
     cv2.imwrite(args.output, cv2.cvtColor(sketch, cv2.COLOR_RGB2BGR))
     print(f"Sketch saved to {args.output}")
 
