@@ -9,11 +9,12 @@ import numpy as np
 import torch
 import mediapipe as mp
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PHASE1_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = PHASE1_ROOT.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from models.generator import UNetGenerator
-from utils.image_utils import tensor_to_image
+from phase1.models.generator import UNetGenerator
+from phase1.utils.image_utils import tensor_to_image
 
 def load_generator(checkpoint_path: str, device: torch.device) -> UNetGenerator:
     """Load a trained generator from a checkpoint file."""
@@ -126,7 +127,7 @@ def main() -> None:
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default=str(PROJECT_ROOT / "checkpoints" / "best_generator.pth"),
+        default=str(PHASE1_ROOT / "checkpoints" / "best_generator.pth"),
         help="Path to generator checkpoint",
     )
     args = parser.parse_args()

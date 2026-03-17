@@ -12,16 +12,17 @@ from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
-# Allow imports from project root
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Allow imports from repository root after phase1 layout
+PHASE1_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = PHASE1_ROOT.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from data.dataset_loader import CUFSDataset, get_train_transforms, get_val_transforms
-from models.generator import UNetGenerator
-from models.discriminator import PatchGANDiscriminator
-from training.loss_functions import generator_loss, discriminator_loss
-from utils.metrics import PerceptualMetrics
-from utils.image_utils import save_image_grid
+from phase1.data.dataset_loader import CUFSDataset, get_train_transforms, get_val_transforms
+from phase1.models.generator import UNetGenerator
+from phase1.models.discriminator import PatchGANDiscriminator
+from phase1.training.loss_functions import generator_loss, discriminator_loss
+from phase1.utils.metrics import PerceptualMetrics
+from phase1.utils.image_utils import save_image_grid
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +39,7 @@ DEFAULT_EPOCHS = 200
 
 PHOTO_DIR = str(PROJECT_ROOT / "dataset" / "photos")
 SKETCH_DIR = str(PROJECT_ROOT / "dataset" / "sketches")
-CHECKPOINT_DIR = str(PROJECT_ROOT / "checkpoints")
+CHECKPOINT_DIR = str(PHASE1_ROOT / "checkpoints")
 SAMPLE_DIR = str(PROJECT_ROOT / "samples")
 
 

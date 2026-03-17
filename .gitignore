@@ -4,14 +4,16 @@ __pycache__/
 
 # Datasets
 dataset/
-CUHK Face Dataset/
 
 # Model Checkpoints
-checkpoints/
 
-# Generated Outputs
+phase1/checkpoints/
+phase2/checkpoints/
+
+# Generated samples
 samples/
-deepsketch_outputs.zip
 
-# Jupyter/Kaggle
-.ipynb_checkpoints/
+# Generated previews and archives
+*.zip
+phase2_preview.png
+output_sketch.png
