@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import cv2
+import numpy as np
 import torch
 from tqdm import tqdm
 
@@ -14,9 +15,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # --- Import Phase 1 inference functions ---
+# Removed preprocess_image because we need manual, un-cropped tensor conversion
 from phase1.inference.generate_sketch import (
     load_generator,
-    preprocess_image,
     generate_sketch,
 )
 
@@ -51,24 +52,35 @@ def main() -> None:
 
     print("Loading Phase 1 generator...")
     generator = load_generator(str(CHECKPOINT_PATH), device)
-
-    print("Loading Phase 1 generator...")
-    generator = load_generator(str(CHECKPOINT_PATH), device)
     generator.eval()  # CRITICAL: Set to evaluation mode
 
     print(f"Generating sketches for {len(image_paths)} images...")
 
     with torch.no_grad():  # CRITICAL: Disable gradient calculation to prevent VRAM leaks
         for img_path in tqdm(image_paths, desc="Generating Phase1 sketches"):
-            # --- Preprocess photo ---
-            input_tensor = preprocess_image(str(img_path))
+            # 1. Read original photo
+            photo_bgr = cv2.imread(str(img_path))
+            original_h, original_w = photo_bgr.shape[:2]
+            photo_rgb = cv2.cvtColor(photo_bgr, cv2.COLOR_BGR2RGB)
 
-            # --- Generate sketch ---
+            # 2. Resize to 256x256 (What your Phase 1 model expects)
+            resized_photo = cv2.resize(photo_rgb, (256, 256))
+
+            # 3. Convert to tensor manually (Bypassing MediaPipe & CLAHE)
+            tensor = resized_photo.astype(np.float32) / 255.0
+            tensor = (tensor * 2.0) - 1.0
+            tensor = np.transpose(tensor, (2, 0, 1))
+            input_tensor = torch.from_numpy(tensor).unsqueeze(0).to(device)
+
+            # 4. Generate sketch
             sketch_rgb = generate_sketch(generator, input_tensor, device)
 
-            # --- Save ---
+            # 5. Resize BACK to original dimensions so it matches the stylized target perfectly
+            sketch_restored = cv2.resize(sketch_rgb, (original_w, original_h), interpolation=cv2.INTER_AREA)
+
+            # 6. Save
             save_path = OUTPUT_DIR / img_path.name
-            cv2.imwrite(str(save_path), cv2.cvtColor(sketch_rgb, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(str(save_path), cv2.cvtColor(sketch_restored, cv2.COLOR_RGB2BGR))
 
 
 if __name__ == "__main__":
