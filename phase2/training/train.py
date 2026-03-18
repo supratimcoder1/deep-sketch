@@ -23,7 +23,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from phase2.data.dataset_loader import SketchToColorDataset, get_train_transforms, get_val_transforms
 from phase2.models.discriminator import PatchGANDiscriminator
 from phase2.models.generator import UNetGenerator
-from phase2.training.loss_functions import discriminator_loss, generator_loss
+from phase2.training.loss_functions import VGGLoss, discriminator_loss, generator_loss
 from phase2.utils.image_utils import tensor_to_image
 from phase2.utils.metrics import PerceptualMetrics
 
@@ -139,6 +139,7 @@ def train(num_epochs: int = DEFAULT_EPOCHS) -> None:
         image_size=IMAGE_SIZE,
     )
     val_dataset_clean = Subset(val_dataset_ref, val_dataset.indices)
+    vgg_criterion = VGGLoss(device=device)
 
     train_loader = DataLoader(
         train_dataset,
@@ -161,7 +162,7 @@ def train(num_epochs: int = DEFAULT_EPOCHS) -> None:
     discriminator = PatchGANDiscriminator(in_channels=6).to(device)
 
     opt_g = torch.optim.Adam(generator.parameters(), lr=LR, betas=(BETA1, 0.999))
-    opt_d = torch.optim.Adam(discriminator.parameters(), lr=LR, betas=(BETA1, 0.999))
+    opt_d = torch.optim.Adam(discriminator.parameters(), lr=1e-4, betas=(BETA1, 0.999))
     scaler_g = GradScaler("cuda", enabled=amp_enabled)
     scaler_d = GradScaler("cuda", enabled=amp_enabled)
 
@@ -196,7 +197,7 @@ def train(num_epochs: int = DEFAULT_EPOCHS) -> None:
             opt_g.zero_grad()
             with autocast(device_type=device.type, enabled=amp_enabled):
                 fake_pred = discriminator(sketches, fake_targets)
-                g_loss, _, _ = generator_loss(fake_pred, fake_targets, real_targets)
+                g_loss, _, _ = generator_loss(fake_pred, fake_targets, real_targets, vgg_criterion=vgg_criterion)
 
             scaler_g.scale(g_loss).backward()
             scaler_g.step(opt_g)
