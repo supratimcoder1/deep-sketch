@@ -15,5 +15,5 @@ samples/
 
 # Generated previews and archives
 *.zip
-phase2_preview.png
-output_sketch.png
+*.png
+*.jpg

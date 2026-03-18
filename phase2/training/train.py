@@ -37,7 +37,7 @@ NUM_WORKERS = 2
 PIN_MEMORY = True
 DEFAULT_EPOCHS = 200
 
-SKETCH_DIR = str(PROJECT_ROOT / "dataset" / "sketches")
+SKETCH_DIR = str(PROJECT_ROOT / "dataset" / "sketches_p1")
 TARGET_DIR = str(PROJECT_ROOT / "dataset" / "stylized")
 CHECKPOINT_DIR = str(PHASE2_ROOT / "checkpoints")
 SAMPLE_DIR = str(PROJECT_ROOT / "samples" / "phase2")
