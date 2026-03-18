@@ -18,7 +18,7 @@ def generator_loss(
     fake_pred: torch.Tensor, 
     fake_targets: torch.Tensor, 
     real_targets: torch.Tensor, 
-    lambda_l1: float = 50.0  # Reduced from 100 to stop color averaging and force sharp polygon edges
+    lambda_l1: float = 30.0  # Reduced from 100 to stop color averaging and force sharp polygon edges
 ) -> tuple[torch.Tensor, float, float]:
     criterion_gan = nn.BCEWithLogitsLoss()
     criterion_l1 = nn.L1Loss()
