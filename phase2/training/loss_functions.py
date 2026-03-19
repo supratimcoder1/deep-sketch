@@ -3,12 +3,13 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
+import torch.nn.functional as F
 
 class VGGLoss(nn.Module):
     def __init__(self, device: torch.device):
         super().__init__()
         # Load pre-trained VGG16 and extract the first few feature-rich layers
-        vgg = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1).features[:16].to(device)
+        vgg = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1).features[:23].to(device)
         vgg.eval()
         for param in vgg.parameters():
             param.requires_grad = False
@@ -40,12 +41,24 @@ def discriminator_loss(real_pred: torch.Tensor, fake_pred: torch.Tensor) -> tupl
     
     return d_loss, loss_real.item(), loss_fake.item()
 
+def edge_loss(fake, real):
+    sobel_x = torch.tensor([[1,0,-1],[2,0,-2],[1,0,-1]], dtype=torch.float32).view(1,1,3,3).to(fake.device)
+    sobel_y = torch.tensor([[1,2,1],[0,0,0],[-1,-2,-1]], dtype=torch.float32).view(1,1,3,3).to(fake.device)
+
+    def get_edges(x):
+        gray = torch.mean(x, dim=1, keepdim=True)
+        gx = F.conv2d(gray, sobel_x, padding=1)
+        gy = F.conv2d(gray, sobel_y, padding=1)
+        return torch.sqrt(gx**2 + gy**2)
+
+    return F.l1_loss(get_edges(fake), get_edges(real))
+
 def generator_loss(
     fake_pred: torch.Tensor, 
     fake_targets: torch.Tensor, 
     real_targets: torch.Tensor,
     vgg_criterion: VGGLoss | None = None,
-    lambda_l1: float = 100.0,
+    lambda_l1: float = 85.0,
     lambda_vgg: float = 10.0
 ) -> tuple[torch.Tensor, float, float]:
     criterion_gan = nn.BCEWithLogitsLoss()
@@ -56,10 +69,13 @@ def generator_loss(
     gan_loss = criterion_gan(fake_pred, real_target)
     l1_loss = criterion_l1(fake_targets, real_targets)
     
+    lambda_edge = 5.0
+
     g_loss = gan_loss + (lambda_l1 * l1_loss)
-    
+
     if vgg_criterion is not None:
         vgg_loss = vgg_criterion(fake_targets, real_targets)
         g_loss += (lambda_vgg * vgg_loss)
-    
-    return g_loss, gan_loss.item(), l1_loss.item()
+
+    edge = edge_loss(fake_targets, real_targets)
+    g_loss += lambda_edge * edge
