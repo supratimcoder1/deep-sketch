@@ -27,6 +27,7 @@ def load_generator(checkpoint_path: str, device: torch.device) -> UNetGenerator:
 
 
 def preprocess_sketch(image_path: str, image_size: int = 256) -> torch.Tensor:
+    """Read a sketch and convert to model tensor using only required transforms."""
     image = cv2.imread(image_path, cv2.IMREAD_COLOR)
     if image is None:
         raise FileNotFoundError(f"Cannot read image: {image_path}")
@@ -43,15 +44,12 @@ def generate_color(
     generator: UNetGenerator,
     input_tensor: torch.Tensor,
     device: torch.device,
-    use_tta: bool = True,
+    use_tta: bool = False,
 ) -> np.ndarray:
+    """Run a single forward pass and return the stylized output."""
     input_tensor = input_tensor.to(device)
     with torch.no_grad():
         prediction = generator(input_tensor)
-        if use_tta:
-            flipped_input = torch.flip(input_tensor, dims=[3])
-            flipped_prediction = torch.flip(generator(flipped_input), dims=[3])
-            prediction = (prediction + flipped_prediction) / 2.0
     return tensor_to_image(prediction.squeeze(0))
 
 
@@ -66,7 +64,6 @@ def main() -> None:
         help="Path to generator checkpoint",
     )
     parser.add_argument("--image-size", type=int, default=256, help="Inference resolution")
-    parser.add_argument("--no-tta", action="store_true", help="Disable horizontal flip test-time augmentation")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -74,7 +71,7 @@ def main() -> None:
 
     generator = load_generator(args.checkpoint, device)
     input_tensor = preprocess_sketch(args.input, image_size=args.image_size)
-    output_image = generate_color(generator, input_tensor, device, use_tta=not args.no_tta)
+    output_image = generate_color(generator, input_tensor, device)
 
     cv2.imwrite(args.output, cv2.cvtColor(output_image, cv2.COLOR_RGB2BGR))
     print(f"Stylized portrait saved to {args.output}")

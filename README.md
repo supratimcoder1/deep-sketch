@@ -220,11 +220,20 @@ This script resizes the sketch to `256x256`, normalizes it to `[-1, 1]`, runs th
 ```bash
 python pipeline/generate_full_pipeline.py \
 	--input path/to/photo.jpg \
-	--output final_portrait.png \
-	--save-intermediate-sketch intermediate_sketch.png
+	--output final_portrait.png
 ```
 
 This runs Phase 1 and Phase 2 back to back in one command.
+
+To run Gemini + rembg preprocessing first (ID-style formatting), enable:
+
+```bash
+python pipeline/generate_full_pipeline.py \
+	--input path/to/selfie.jpg \
+	--output final_portrait.png \
+	--preprocess-id-photo \
+	--preprocess-output preprocessed_id.jpg
+```
 
 ## Kaggle Workflow
 
@@ -284,6 +293,12 @@ Run the full pipeline with default checkpoints:
 
 ```bash
 python pipeline/generate_full_pipeline.py --input path/to/photo.jpg --output portrait.png
+```
+
+Run full pipeline with ID-photo preprocessing:
+
+```bash
+python pipeline/generate_full_pipeline.py --input path/to/selfie.jpg --output portrait.png --preprocess-id-photo
 ```
 
 ## Troubleshooting
