@@ -68,8 +68,15 @@ def _validate(
             real_targets = batch["target"].to(device, non_blocking=True)
             with autocast(device_type=device.type, enabled=amp_enabled):
                 fake_targets = generator(sketches)
-            lpips_scores.append(metrics.compute_lpips(fake_targets, real_targets))
-            ssim_scores.append(metrics.compute_ssim(fake_targets, real_targets))
+                fake_targets = torch.clamp(fake_targets, -1.0, 1.0)
+            if torch.isnan(fake_targets).any():
+                print("NaN detected in generator output (validation)")
+            lpips_value = metrics.compute_lpips(fake_targets, real_targets)
+            ssim_value = metrics.compute_ssim(fake_targets, real_targets)
+            if np.isfinite(lpips_value):
+                lpips_scores.append(lpips_value)
+            if np.isfinite(ssim_value):
+                ssim_scores.append(ssim_value)
 
     generator.train()
     mean_lpips = float(np.mean(lpips_scores)) if lpips_scores else float("inf")
@@ -107,12 +114,13 @@ def _save_image_grid(
     plt.close(fig)
 
 
-def train(num_epochs: int = DEFAULT_EPOCHS) -> None:
+def train(num_epochs: int = DEFAULT_EPOCHS, no_amp: bool = False) -> None:
     _seed_everything()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    amp_enabled = device.type == "cuda"
+    amp_enabled = device.type == "cuda" and not no_amp
     print(f"Using device: {device}")
+    print(f"AMP enabled: {amp_enabled}")
 
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     os.makedirs(SAMPLE_DIR, exist_ok=True)
@@ -174,6 +182,8 @@ def train(num_epochs: int = DEFAULT_EPOCHS) -> None:
         discriminator.train()
         epoch_d_loss = 0.0
         epoch_g_loss = 0.0
+        valid_steps = 0
+        skipped_steps = 0
         latest_sketches = None
         latest_targets = None
         latest_fake = None
@@ -183,39 +193,62 @@ def train(num_epochs: int = DEFAULT_EPOCHS) -> None:
             sketches = batch["sketch"].to(device, non_blocking=True)
             real_targets = batch["target"].to(device, non_blocking=True)
 
-            opt_d.zero_grad()
+            opt_d.zero_grad(set_to_none=True)
             with autocast(device_type=device.type, enabled=amp_enabled):
                 fake_targets = generator(sketches)
+                fake_targets = torch.clamp(fake_targets, -1.0, 1.0)
                 real_pred = discriminator(sketches, real_targets)
                 fake_pred = discriminator(sketches, fake_targets.detach())
                 d_loss, _, _ = discriminator_loss(real_pred, fake_pred)
 
+            if torch.isnan(fake_targets).any():
+                print("NaN detected in generator output")
+                skipped_steps += 1
+                progress.set_postfix(D="skip", G="skip")
+                continue
+
+            if not torch.isfinite(d_loss):
+                skipped_steps += 1
+                progress.set_postfix(D="nan", G="skip")
+                continue
+
             scaler_d.scale(d_loss).backward()
+            scaler_d.unscale_(opt_d)
+            torch.nn.utils.clip_grad_norm_(discriminator.parameters(), max_norm=1.0)
             scaler_d.step(opt_d)
             scaler_d.update()
 
-            opt_g.zero_grad()
+            opt_g.zero_grad(set_to_none=True)
             with autocast(device_type=device.type, enabled=amp_enabled):
                 fake_pred = discriminator(sketches, fake_targets)
                 g_loss, _, _ = generator_loss(fake_pred, fake_targets, real_targets, vgg_criterion=vgg_criterion)
 
+            if not torch.isfinite(g_loss):
+                skipped_steps += 1
+                progress.set_postfix(D=f"{d_loss.item():.4f}", G="nan")
+                continue
+
             scaler_g.scale(g_loss).backward()
+            scaler_g.unscale_(opt_g)
+            torch.nn.utils.clip_grad_norm_(generator.parameters(), max_norm=1.0)
             scaler_g.step(opt_g)
             scaler_g.update()
 
             epoch_d_loss += d_loss.item()
             epoch_g_loss += g_loss.item()
-            latest_sketches = sketches.detach().cpu()
-            latest_targets = real_targets.detach().cpu()
-            latest_fake = fake_targets.detach().cpu()
+            valid_steps += 1
+            latest_sketches = torch.nan_to_num(sketches.detach(), nan=0.0, posinf=1.0, neginf=-1.0).cpu()
+            latest_targets = torch.nan_to_num(real_targets.detach(), nan=0.0, posinf=1.0, neginf=-1.0).cpu()
+            latest_fake = torch.nan_to_num(fake_targets.detach(), nan=0.0, posinf=1.0, neginf=-1.0).cpu()
             progress.set_postfix(D=f"{d_loss.item():.4f}", G=f"{g_loss.item():.4f}")
 
-        avg_d = epoch_d_loss / max(1, len(train_loader))
-        avg_g = epoch_g_loss / max(1, len(train_loader))
+        avg_d = epoch_d_loss / max(1, valid_steps)
+        avg_g = epoch_g_loss / max(1, valid_steps)
         val_lpips, val_ssim = _validate(generator, val_loader, metrics, device, amp_enabled)
         print(
             f"  -> D_loss: {avg_d:.4f}  G_loss: {avg_g:.4f}  "
-            f"val_LPIPS: {val_lpips:.4f}  val_SSIM: {val_ssim:.4f}  best_LPIPS: {best_lpips:.4f}"
+            f"val_LPIPS: {val_lpips:.4f}  val_SSIM: {val_ssim:.4f}  best_LPIPS: {best_lpips:.4f}  "
+            f"valid_steps: {valid_steps}  skipped_steps: {skipped_steps}"
         )
 
         if val_lpips < best_lpips:
@@ -248,5 +281,10 @@ if __name__ == "__main__":
         default=DEFAULT_EPOCHS,
         help=f"Number of training epochs (default: {DEFAULT_EPOCHS})",
     )
+    parser.add_argument(
+        "--no-amp",
+        action="store_true",
+        help="Disable mixed precision (use full fp32 training).",
+    )
     args = parser.parse_args()
-    train(num_epochs=args.epochs)
+    train(num_epochs=args.epochs, no_amp=args.no_amp)

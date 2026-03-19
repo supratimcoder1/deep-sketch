@@ -36,14 +36,18 @@ class VGGLoss(nn.Module):
         if self.mean.device != input_device:
             self.to(input_device)
 
-        mean = self.mean.to(device=input_device, dtype=fake_image.dtype)
-        std = self.std.to(device=input_device, dtype=fake_image.dtype)
+        # Keep perceptual path in fp32 for numerical stability with AMP training.
+        mean = self.mean.to(device=input_device, dtype=torch.float32)
+        std = self.std.to(device=input_device, dtype=torch.float32)
+        fake_fp32 = fake_image.float()
+        real_fp32 = real_image.float()
 
-        fake_norm = ((fake_image + 1.0) / 2.0 - mean) / std
-        real_norm = ((real_image + 1.0) / 2.0 - mean) / std
+        with torch.autocast(device_type=input_device.type, enabled=False):
+            fake_norm = ((fake_fp32 + 1.0) / 2.0 - mean) / std
+            real_norm = ((real_fp32 + 1.0) / 2.0 - mean) / std
+            fake_features = self.vgg(fake_norm)
+            real_features = self.vgg(real_norm)
 
-        fake_features = self.vgg(fake_norm)
-        real_features = self.vgg(real_norm)
         return self.criterion(fake_features, real_features)
 
 
@@ -69,10 +73,11 @@ def edge_loss(fake: torch.Tensor, real: torch.Tensor) -> torch.Tensor:
     sobel_y = torch.tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]], dtype=torch.float32).view(1, 1, 3, 3).to(fake.device)
 
     def get_edges(x: torch.Tensor) -> torch.Tensor:
-        gray = torch.mean(x, dim=1, keepdim=True)
+        gray = torch.mean(x.float(), dim=1, keepdim=True)
         gx = F.conv2d(gray, sobel_x, padding=1)
         gy = F.conv2d(gray, sobel_y, padding=1)
-        return torch.sqrt(gx**2 + gy**2)
+        # epsilon avoids non-finite gradients when gx=gy=0 at many pixels.
+        return torch.sqrt(gx**2 + gy**2 + 1e-8)
 
     return F.l1_loss(get_edges(fake), get_edges(real))
 
@@ -82,8 +87,8 @@ def generator_loss(
     fake_targets: torch.Tensor,
     real_targets: torch.Tensor,
     vgg_criterion: VGGLoss | None = None,
-    lambda_l1: float = 85.0,
-    lambda_vgg: float = 10.0,
+    lambda_l1: float = 90.0,
+    lambda_vgg: float = 8.0,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Compute generator loss and return total + key components as tensors.
 
@@ -103,7 +108,7 @@ def generator_loss(
         vgg_loss = vgg_criterion(fake_targets, real_targets)
         g_loss += (lambda_vgg * vgg_loss)
 
-    lambda_edge = 5.0
+    lambda_edge = 3.0
     edge = edge_loss(fake_targets, real_targets)
     g_loss += lambda_edge * edge
 
