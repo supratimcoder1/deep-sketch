@@ -118,7 +118,7 @@ def stylize_image(
         if not np.any(mask):
             continue
 
-        mean_bgr = cv2.mean(filtered, mask=mask)[:3]
+        mean_bgr = cv2.mean(image_bgr, mask=mask)[:3]
         cv2.fillConvexPoly(stylized, polygon, tuple(int(value) for value in mean_bgr))
 
     pixels = stylized.reshape((-1, 3)).astype(np.float32)
