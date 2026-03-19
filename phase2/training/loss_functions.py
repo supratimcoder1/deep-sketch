@@ -11,7 +11,7 @@ class VGGLoss(nn.Module):
 
     def __init__(self, device: torch.device):
         super().__init__()
-        vgg = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1).features[:23].to(device)
+        vgg = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1).features[:23]
         vgg.eval()
         for param in vgg.parameters():
             param.requires_grad = False
@@ -20,16 +20,27 @@ class VGGLoss(nn.Module):
 
         self.register_buffer(
             "mean",
-            torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32).view(1, 3, 1, 1),
+            torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32, device=device).view(1, 3, 1, 1),
         )
         self.register_buffer(
             "std",
-            torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32).view(1, 3, 1, 1),
+            torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32, device=device).view(1, 3, 1, 1),
         )
 
+        # Keep all submodules/buffers initialized on the requested device.
+        self.to(device)
+
     def forward(self, fake_image: torch.Tensor, real_image: torch.Tensor) -> torch.Tensor:
-        fake_norm = ((fake_image + 1.0) / 2.0 - self.mean) / self.std
-        real_norm = ((real_image + 1.0) / 2.0 - self.mean) / self.std
+        # Runtime safety: if caller moves inputs to a different device, follow once here.
+        input_device = fake_image.device
+        if self.mean.device != input_device:
+            self.to(input_device)
+
+        mean = self.mean.to(device=input_device, dtype=fake_image.dtype)
+        std = self.std.to(device=input_device, dtype=fake_image.dtype)
+
+        fake_norm = ((fake_image + 1.0) / 2.0 - mean) / std
+        real_norm = ((real_image + 1.0) / 2.0 - mean) / std
 
         fake_features = self.vgg(fake_norm)
         real_features = self.vgg(real_norm)
